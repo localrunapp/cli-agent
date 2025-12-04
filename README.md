@@ -5,16 +5,22 @@ This agent enables remote system monitoring, terminal access, and service manage
 
 ## Installation
 
-### Linux & macOS
+### macOS
 
 ```bash
-curl -sL https://raw.githubusercontent.com/guillermofarias/localrun/main/cli-agent/install-linux.sh | bash
+curl -sL https://raw.githubusercontent.com/localrunapp/cli-agent/main/scripts/install-macos.sh | bash
+```
+
+### Linux
+
+```bash
+curl -sL https://raw.githubusercontent.com/localrunapp/cli-agent/main/scripts/install-linux.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/guillermofarias/localrun/main/cli-agent/install-windows.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/localrunapp/cli-agent/main/scripts/install-windows.ps1 | iex
 ```
 
 ## Usage
@@ -22,21 +28,27 @@ iwr -useb https://raw.githubusercontent.com/guillermofarias/localrun/main/cli-ag
 Start the agent and connect to your LocalRun instance:
 
 ```bash
-localrun-agent serve --backend 192.168.1.50
+localrun serve --backend 192.168.1.50
 ```
 
 ### Commands
 
-- `localrun-agent serve`: Start the agent server.
-- `localrun-agent scan`: Scan local network for services.
-- `localrun-agent --help`: Show help and available commands.
+- `localrun serve`: Start the agent server
+- `localrun install`: Install as system service
+- `localrun start`: Start the service
+- `localrun stop`: Stop the service
+- `localrun status`: Check service status
+- `localrun logs`: View service logs
+- `localrun uninstall`: Remove system service
+- `localrun app update`: Update application containers
+- `localrun --help`: Show help and available commands
 
 ## Development
 
 ### Prerequisites
 
-- Node.js 18+
-- npm 9+
+- Node.js 20+
+- npm 11+
 
 ### Setup
 
