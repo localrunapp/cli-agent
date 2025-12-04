@@ -10,15 +10,26 @@ echo "Installing LocalRun Agent (latest version)..."
 # Detect architecture
 ARCH=$(uname -m)
 if [ "$ARCH" = "arm64" ]; then
-  RELEASE_URL="${BASE_URL}/localrun-darwin-arm64.tar.gz"
+  TARGET="darwin-arm64"
   echo "Detected: Apple Silicon (arm64)"
 elif [ "$ARCH" = "x86_64" ]; then
-  RELEASE_URL="${BASE_URL}/localrun-darwin-x64.tar.gz"
+  TARGET="darwin-x64"
   echo "Detected: Intel (x86_64)"
 else
   echo "Error: Unsupported architecture: $ARCH"
   exit 1
 fi
+
+# Get latest release info to find exact filename
+LATEST_RELEASE=$(curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
+TARBALL_NAME=$(echo "$LATEST_RELEASE" | grep -o "localrun-v.*-${TARGET}\.tar\.gz" | head -1)
+
+if [ -z "$TARBALL_NAME" ]; then
+  echo "Error: Could not find release tarball for ${TARGET}"
+  exit 1
+fi
+
+RELEASE_URL="${BASE_URL}/${TARBALL_NAME}"
 
 # Check if running on macOS
 if [ "$(uname -s)" != "Darwin" ]; then
