@@ -56,6 +56,27 @@ jobs:
       - name: Build and Pack
         run: npm run ${{ matrix.command }}
 
+      - name: Clean Build Artifacts
+        run: |
+          # Remove unwanted files
+          rm -f dist/index.js dist/index.d.ts
+          # Rename files to remove hash ID and localrun prefix
+          cd dist
+          for file in localrun-v*-*-*.tar.*; do
+            if [ -f "$file" ]; then
+              # Extract version, platform, arch from filename
+              # localrun-v0.1.18-5d7e0b8-darwin-arm64.tar.gz -> v0.1.18-darwin-arm64.tar.gz
+              new_name=$(echo "$file" | sed -E 's/localrun-(v[0-9]+\.[0-9]+\.[0-9]+)-[a-f0-9]+-(.+)/\1-\2/')
+              if [ "$file" != "$new_name" ]; then
+                mv "$file" "$new_name"
+                echo "Renamed $file -> $new_name"
+              fi
+            fi
+          done
+          # Remove .tar.xz files, keep only .tar.gz
+          rm -f *.tar.xz
+          cd ..
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
