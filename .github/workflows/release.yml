@@ -12,6 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+    defaults:
+      run:
+        shell: bash
         include:
           - os: ubuntu-latest
             platform: linux
