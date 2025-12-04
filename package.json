@@ -74,7 +74,7 @@
     "dev": "ts-node --transpile-only src/index.ts",
     "lint": "eslint . --ext .ts",
     "postpack": "shx rm -f oclif.manifest.json",
-    "prepack": "pnpm run build && oclif manifest && oclif readme",
+    "prepack": "pnpm run build && pnpm exec oclif manifest && pnpm exec oclif readme",
     "test": "mocha --forbid-only \"test/**/*.test.ts\"",
     "version": "oclif readme && git add README.md",
     "pack:macos": "oclif pack macos",
@@ -82,7 +82,7 @@
     "pack:tarballs": "oclif pack tarballs"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "bugs": "https://github.com/localrunapp/cli-agent/issues",
   "keywords": [
