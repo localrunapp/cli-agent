@@ -46,35 +46,41 @@ export default class Install extends Command {
 
       // Detect platform
       if (process.platform === 'linux') {
-        // Linux Systemd Service
-        const systemdDir = join(homedir(), '.config', 'systemd', 'user')
-        if (!existsSync(systemdDir)) {
-          mkdirSync(systemdDir, { recursive: true })
-        }
-
-        const servicePath = join(systemdDir, 'localrun-agent.service')
+        // Always use system-wide service
+        const servicePath = '/etc/systemd/system/localrun-agent.service'
         const serviceContent = `[Unit]
 Description=LocalRun Agent
 After=network.target
 
 [Service]
+Type=simple
+User=root
 ExecStart=${binaryPath} serve --port 47777
 Restart=always
 RestartSec=10
-StandardOutput=append:${homedir()}/.localrun/agent.log
-StandardError=append:${homedir()}/.localrun/agent.log
+StandardOutput=append:/var/log/localrun-agent.log
+StandardError=append:/var/log/localrun-agent.log
 Environment=PATH=${process.env.PATH}
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 `
         writeFileSync(servicePath, serviceContent)
-        this.log(chalk.green('✓') + ` Systemd service installed at ${servicePath}`)
+        this.log(chalk.green('✓') + ` System service installed at ${servicePath}`)
 
+        // Reload, enable and start service automatically
+        this.log(chalk.blue('🔄 Reloading systemd...'))
+        execSync('systemctl daemon-reload', { stdio: 'inherit' })
+        
+        this.log(chalk.blue('🔧 Enabling and starting service...'))
+        execSync('systemctl enable --now localrun-agent', { stdio: 'inherit' })
+        
+        this.log(chalk.green('✓ LocalRun Agent service is now running!'))
         this.log('')
-        this.log(chalk.blue('To enable and start the service:'))
-        this.log(chalk.white('  systemctl --user daemon-reload'))
-        this.log(chalk.white('  systemctl --user enable --now localrun-agent'))
+        this.log(chalk.blue('Service commands:'))
+        this.log(chalk.white('  systemctl status localrun-agent   # Check status'))
+        this.log(chalk.white('  systemctl stop localrun-agent     # Stop service'))
+        this.log(chalk.white('  systemctl restart localrun-agent  # Restart service'))
         this.log('')
       } else {
         // macOS LaunchAgent
@@ -115,10 +121,26 @@ WantedBy=default.target
         writeFileSync(plistPath, plistContent)
         this.log(chalk.green('✓') + ` LaunchAgent installed at ${plistPath}`)
 
-        this.log('')
-        this.log(chalk.blue('To start the service:'))
-        this.log(chalk.white('  localrun start'))
-        this.log('')
+        // Load and start the LaunchAgent automatically
+        this.log(chalk.blue('🔧 Loading and starting LaunchAgent...'))
+        try {
+          // Unload first in case it was already loaded
+          execSync('launchctl unload ~/Library/LaunchAgents/com.localrun.agent.plist 2>/dev/null || true', { stdio: 'inherit' })
+          // Load and start
+          execSync('launchctl load ~/Library/LaunchAgents/com.localrun.agent.plist', { stdio: 'inherit' })
+          
+          this.log(chalk.green('✓ LocalRun Agent service is now running!'))
+          this.log('')
+          this.log(chalk.blue('Service commands:'))
+          this.log(chalk.white('  localrun status    # Check status'))
+          this.log(chalk.white('  localrun stop      # Stop service'))
+          this.log(chalk.white('  localrun start     # Start service'))
+          this.log('')
+        } catch (error) {
+          this.log(chalk.yellow('⚠️  LaunchAgent installed but failed to start automatically'))
+          this.log(chalk.blue('To start manually: ') + chalk.white('localrun start'))
+          this.log('')
+        }
       }
     } catch (error) {
       this.error(chalk.red('✗ Error installing service: ') + (error as Error).message)
