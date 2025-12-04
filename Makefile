@@ -40,7 +40,7 @@ release:
 	echo "Releasing v$$VERSION..."; \
 	git add package.json pnpm-lock.yaml; \
 	git commit -m "chore: release v$$VERSION"; \
-	git tag v$$VERSION; \
+	git tag -a v$$VERSION -m "Release v$$VERSION"; \
 	git push origin main; \
 	git push origin v$$VERSION; \
 	if command -v gh >/dev/null 2>&1; then \
