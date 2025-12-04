@@ -43,9 +43,4 @@ release:
 	git tag -a v$$VERSION -m "Release v$$VERSION"; \
 	git push origin main; \
 	git push origin v$$VERSION; \
-	if command -v gh >/dev/null 2>&1; then \
-		gh release create v$$VERSION --generate-notes; \
-	else \
-		echo "Warning: 'gh' CLI not found. Skipping GitHub Release creation."; \
-		echo "Please create the release manually: https://github.com/guillermofarias/localrun/releases/new?tag=v$$VERSION"; \
-	fi
+	echo "Tag pushed successfully. GitHub Actions will create the release with binaries."
