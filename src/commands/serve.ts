@@ -84,7 +84,104 @@ export default class Serve extends Command {
     })
   }
 
-  // ... (connectToTerminalBackend and spawnShell unchanged) ...
+  connectToTerminalBackend(wsUrl: string, serverId: string) {
+    const ws = new WebSocket(wsUrl)
+    let ptyProcess: any = null
+
+    ws.on('open', () => {
+      this.log(chalk.green('✓') + ' Connected to Terminal Backend')
+
+      // Register with server_id
+      ws.send(JSON.stringify({
+        type: 'register',
+        server_id: serverId,
+        system_info: {
+          hostname: os.hostname(),
+          platform: os.platform(),
+          release: os.release(),
+          arch: os.arch(),
+        }
+      }))
+    })
+
+    ws.on('message', async (data: WebSocket.Data) => {
+      try {
+        const message = JSON.parse(data.toString())
+
+        if (message.type === 'terminal_input') {
+          if (!ptyProcess) {
+            ptyProcess = this.spawnShell(ws)
+          }
+          ptyProcess.write(message.data)
+        } else if (message.type === 'terminal_resize') {
+          if (ptyProcess) {
+            ptyProcess.resize(message.cols, message.rows)
+          }
+        } else if (message.type === 'config_update') {
+          // Handle config update (e.g. server_id assignment)
+          if (message.config && message.config.server_id) {
+            const configPath = join(homedir(), '.localrun', 'agent.json')
+            let config: any = {}
+            try {
+              if (require('fs').existsSync(configPath)) {
+                config = JSON.parse(require('fs').readFileSync(configPath, 'utf-8'))
+              }
+            } catch (e) { }
+
+            if (config.server_id !== message.config.server_id) {
+              this.log(chalk.yellow('! Server ID updated by backend. Updating config and restarting...'))
+              config.server_id = message.config.server_id
+              writeFileSync(configPath, JSON.stringify(config, null, 2))
+              process.exit(0) // Restart service (managed by systemd/launchd)
+            }
+          }
+        } else if (message.type === 'scan_request') {
+          this.log(chalk.blue('ℹ') + ' Received scan request')
+          const scanner = new Scanner()
+          // If target is provided, scan specific host, otherwise scan local network
+          const results = await scanner.scan(message.target)
+          ws.send(JSON.stringify({
+            type: 'scan_result',
+            results
+          }))
+        }
+      } catch (error) {
+        // Ignore malformed messages
+      }
+    })
+
+    ws.on('close', () => {
+      this.log(chalk.red('✗') + ' Disconnected from Terminal Backend. Reconnecting in 5s...')
+      if (ptyProcess) {
+        ptyProcess.kill()
+        ptyProcess = null
+      }
+      setTimeout(() => this.connectToTerminalBackend(wsUrl, serverId), 5000)
+    })
+
+    ws.on('error', (error) => {
+      this.log(chalk.red('✗') + ` WebSocket Error: ${error.message}`)
+    })
+  }
+
+  spawnShell(ws: WebSocket) {
+    const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash'
+    const ptyProcess = pty.spawn(shell, [], {
+      name: 'xterm-color',
+      cols: 80,
+      rows: 24,
+      cwd: process.env.HOME,
+      env: process.env as any
+    })
+
+    ptyProcess.onData((data: string) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'terminal_output', data }))
+      }
+    })
+
+    return ptyProcess
+  }
 
   async startHeartbeat(serverId: string) {
     const sendHeartbeat = async () => {
