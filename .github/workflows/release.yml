@@ -58,23 +58,37 @@ jobs:
 
       - name: Clean Build Artifacts
         run: |
+          echo "Contents of dist directory before cleanup:"
+          ls -la dist/ || echo "dist directory not found"
+          
           # Remove unwanted files
           rm -f dist/index.js dist/index.d.ts
+          
           # Rename files to remove hash ID from OCLIF generated names
           cd dist
-          for file in *-v*-*-*.tar.*; do
+          echo "Looking for files to rename..."
+          ls -la
+          
+          for file in *.tar.*; do
             if [ -f "$file" ]; then
+              echo "Processing file: $file"
               # Extract version, platform, arch from filename
-              # localrun-v0.1.18-5d7e0b8-darwin-arm64.tar.gz -> v0.1.18-darwin-arm64.tar.gz
-              new_name=$(echo "$file" | sed -E 's/[^-]+-v([0-9]+\.[0-9]+\.[0-9]+)-[a-f0-9]+-(.+)/v\1-\2/')
-              if [ "$file" != "$new_name" ]; then
+              # localrun-v0.1.20-abc123-darwin-arm64.tar.gz -> v0.1.20-darwin-arm64.tar.gz
+              new_name=$(echo "$file" | sed -E 's/.*-v([0-9]+\.[0-9]+\.[0-9]+)-[a-f0-9]+-(.+)/v\1-\2/')
+              if [ "$file" != "$new_name" ] && [ -n "$new_name" ]; then
                 mv "$file" "$new_name"
                 echo "Renamed $file -> $new_name"
+              else
+                echo "No rename needed for $file"
               fi
             fi
           done
+          
           # Remove .tar.xz files, keep only .tar.gz
           rm -f *.tar.xz
+          
+          echo "Final contents of dist directory:"
+          ls -la
           cd ..
 
       - name: Upload Artifacts
