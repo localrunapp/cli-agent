@@ -12,9 +12,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-    defaults:
-      run:
-        shell: bash
         include:
           - os: ubuntu-latest
             platform: linux
@@ -25,6 +22,10 @@ jobs:
           - os: windows-latest
             platform: win
             command: pack:win
+            
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
