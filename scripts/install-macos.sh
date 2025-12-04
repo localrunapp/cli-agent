@@ -22,7 +22,7 @@ fi
 
 # Get latest release info to find exact filename
 LATEST_RELEASE=$(curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
-TARBALL_NAME=$(echo "$LATEST_RELEASE" | grep -o "localrun-v.*-${TARGET}\.tar\.gz" | head -1)
+TARBALL_NAME=$(echo "$LATEST_RELEASE" | grep -o "v.*-${TARGET}\.tar\.gz" | head -1)
 
 if [ -z "$TARBALL_NAME" ]; then
   echo "Error: Could not find release tarball for ${TARGET}"
