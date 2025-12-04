@@ -58,7 +58,16 @@
       "@oclif/plugin-update"
     ],
     "topicSeparator": " ",
-    "topics": {}
+    "topics": {},
+    "macos": {
+      "identifier": "com.localrun.agent"
+    },
+    "win": {
+      "identifier": "com.localrun.agent"
+    },
+    "linux": {
+      "executable": "localrun"
+    }
   },
   "scripts": {
     "build": "shx rm -rf dist && tsc -b",
