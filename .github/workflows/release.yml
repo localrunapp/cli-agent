@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            command: pack:tarballs
+          - os: macos-latest
+            platform: macos
+            command: pack:macos
+          - os: windows-latest
+            platform: win
+            command: pack:win
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: agent/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: agent
+        run: npm ci
+
+      - name: Build and Pack
+        working-directory: agent
+        run: npm run ${{ matrix.command }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: localrun-${{ matrix.platform }}
+          path: agent/dist/*
+          if-no-files-found: warn
