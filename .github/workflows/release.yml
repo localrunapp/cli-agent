@@ -26,24 +26,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: agent/package-lock.json
+          cache: 'pnpm'
 
       - name: Install Dependencies
-        working-directory: agent
-        run: npm ci
+        run: pnpm install
 
       - name: Build and Pack
-        working-directory: agent
-        run: npm run ${{ matrix.command }}
+        run: pnpm run ${{ matrix.command }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: localrun-${{ matrix.platform }}
-          path: agent/dist/*
+          path: dist/*
           if-no-files-found: warn

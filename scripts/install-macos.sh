@@ -2,7 +2,7 @@
 set -e
 
 INSTALL_DIR="/usr/local/bin"
-GITHUB_REPO="localrun-tech/cli-agent"
+GITHUB_REPO="localrunapp/cli-agent"
 BASE_URL="https://github.com/${GITHUB_REPO}/releases/latest/download"
 
 echo "Installing LocalRun Agent (latest version)..."

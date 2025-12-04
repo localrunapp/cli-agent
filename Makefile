@@ -9,19 +9,19 @@ help:
 	@echo ""
 
 install:
-	cd agent && npm install
+	pnpm install
 
 build:
-	cd agent && npm run build
+	pnpm run build
 
 pack: build
-	cd agent && npx oclif pack tarballs --targets darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-x64
+	pnpm exec oclif pack tarballs --targets darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-x64
 
 dev: build
-	cd agent && npm link
+	pnpm link --global
 
 clean:
-	cd agent && rm -rf dist tmp node_modules *.tgz *.tar.gz *.tar.xz oclif.manifest.json
+	rm -rf dist tmp node_modules *.tgz *.tar.gz *.tar.xz oclif.manifest.json
 
 # Release Management
 release-patch:
@@ -35,10 +35,10 @@ release-major:
 
 release:
 	@if [ -z "$(type)" ]; then echo "Error: type argument required (patch, minor, major)"; exit 1; fi
-	cd agent && npm version $(type) --no-git-tag-version
-	@VERSION=$$(node -p "require('./agent/package.json').version"); \
+	pnpm version $(type) --no-git-tag-version
+	@VERSION=$$(node -p "require('./package.json').version"); \
 	echo "Releasing v$$VERSION..."; \
-	git add agent/package.json agent/package-lock.json; \
+	git add package.json pnpm-lock.yaml; \
 	git commit -m "chore: release v$$VERSION"; \
 	git tag v$$VERSION; \
 	git push origin main; \
