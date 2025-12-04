@@ -8,3 +8,5 @@ tmp
 *.log
 npm-shrinkwrap.json
 oclif.manifest.json
+
+tsconfig.tsbuildinfo

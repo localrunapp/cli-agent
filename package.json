@@ -1,15 +1,15 @@
 {
-  "name": "localrun-agent",
+  "name": "localrun-cli-agent",
   "version": "0.1.0",
-  "description": "LocalRun Agent - Native macOS service for local development",
+  "description": "LocalRun Agent - MultiOs service for local development",
   "author": "LocalRun Team",
   "bin": {
     "localrun": "./bin/run.js"
   },
-  "homepage": "https://github.com/yourusername/localrun",
+  "homepage": "https://github.com/localrunapp/cli-agent",
   "license": "MIT",
   "main": "dist/index.js",
-  "repository": "yourusername/localrun",
+  "repository": "localrunapp/cli-agent",
   "files": [
     "/bin",
     "/dist",
@@ -75,7 +75,7 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "bugs": "https://github.com/yourusername/localrun/issues",
+  "bugs": "https://github.com/localrunapp/cli-agent/issues",
   "keywords": [
     "oclif",
     "cli",
