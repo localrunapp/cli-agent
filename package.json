@@ -74,7 +74,7 @@
     "dev": "ts-node --transpile-only src/index.ts",
     "lint": "eslint . --ext .ts",
     "postpack": "shx rm -f oclif.manifest.json",
-    "prepack": "pnpm run build && pnpm exec oclif manifest && pnpm exec oclif readme",
+    "prepack": "shx rm -rf dist && tsc -b && oclif manifest && oclif readme",
     "test": "mocha --forbid-only \"test/**/*.test.ts\"",
     "version": "oclif readme && git add README.md",
     "pack:macos": "oclif pack macos",
