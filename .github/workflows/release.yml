@@ -41,6 +41,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Setup NSIS (Windows only)
+        if: matrix.platform == 'win'
+        run: |
+          choco install nsis -y
+          echo "C:\Program Files (x86)\NSIS" >> $GITHUB_PATH
+
       - name: Install Dependencies
         run: npm ci
 
