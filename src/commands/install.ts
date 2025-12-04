@@ -44,9 +44,6 @@ export default class Install extends Command {
       }
       binaryPath = resolvedPath
 
-      // Get node path
-      const nodePath = execSync('which node', { encoding: 'utf-8' }).trim()
-
       // Detect platform
       if (process.platform === 'linux') {
         // Linux Systemd Service
@@ -61,7 +58,7 @@ Description=LocalRun Agent
 After=network.target
 
 [Service]
-ExecStart=${nodePath} ${binaryPath} serve --port 47777
+ExecStart=${binaryPath} serve --port 47777
 Restart=always
 RestartSec=10
 StandardOutput=append:${homedir()}/.localrun/agent.log
@@ -90,7 +87,6 @@ WantedBy=default.target
     <string>com.localrun.agent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${nodePath}</string>
         <string>${binaryPath}</string>
         <string>serve</string>
         <string>--port</string>
