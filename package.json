@@ -1,6 +1,6 @@
 {
   "name": "localrun-cli-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LocalRun Agent - MultiOs service for local development",
   "author": "LocalRun Team",
   "bin": {
