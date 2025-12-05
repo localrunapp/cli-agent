@@ -1,4 +1,4 @@
-import { Command } from '@oclif/core'
+import { Command, Flags } from '@oclif/core'
 import { existsSync, writeFileSync, mkdirSync, chmodSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -8,11 +8,28 @@ import chalk from 'chalk'
 export default class Install extends Command {
   static description = 'Install LocalRun Agent as system service (LaunchAgent)'
 
+  static flags = {
+    backend: Flags.string({ 
+      char: 'b', 
+      description: 'Backend server URL (e.g., 192.168.1.50)',
+      required: false
+    }),
+    port: Flags.integer({
+      char: 'p',
+      description: 'Agent port',
+      default: 47777
+    })
+  }
+
   static examples = [
     '<%= config.bin %> <%= command.id %>',
+    '<%= config.bin %> <%= command.id %> --backend 192.168.1.50',
+    '<%= config.bin %> <%= command.id %> -b 192.168.1.50 -p 47777',
   ]
 
   async run(): Promise<void> {
+    const { flags } = await this.parse(Install)
+    
     this.log(chalk.blue('📦 Installing LocalRun Agent...'))
 
     try {
@@ -44,6 +61,13 @@ export default class Install extends Command {
       }
       binaryPath = resolvedPath
 
+      // Build serve command with flags
+      let serveCommand = `${binaryPath} serve --port ${flags.port}`
+      if (flags.backend) {
+        serveCommand += ` --backend ${flags.backend}`
+      }
+      // If no backend specified, it will use localhost by default
+
       // Detect platform
       if (process.platform === 'linux') {
         // Always use system-wide service
@@ -55,7 +79,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=${binaryPath} serve --port 47777
+ExecStart=${serveCommand}
 Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/localrun-agent.log
@@ -85,6 +109,20 @@ WantedBy=multi-user.target
       } else {
         // macOS LaunchAgent
         const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.localrun.agent.plist')
+        
+        // Build ProgramArguments array
+        let programArgs = [
+          `        <string>${binaryPath}</string>`,
+          `        <string>serve</string>`,
+          `        <string>--port</string>`,
+          `        <string>${flags.port}</string>`
+        ]
+        
+        if (flags.backend) {
+          programArgs.push(`        <string>--backend</string>`)
+          programArgs.push(`        <string>${flags.backend}</string>`)
+        }
+        
         const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -93,10 +131,7 @@ WantedBy=multi-user.target
     <string>com.localrun.agent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${binaryPath}</string>
-        <string>serve</string>
-        <string>--port</string>
-        <string>47777</string>
+${programArgs.join('\n')}
     </array>
     <key>RunAtLoad</key>
     <true/>

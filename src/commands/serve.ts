@@ -24,7 +24,7 @@ export default class Serve extends Command {
   static flags = {
     port: Flags.integer({ char: 'p', description: 'Server port', default: 47777 }),
     host: Flags.string({ char: 'h', description: 'Server host', default: '127.0.0.1' }),
-    backend: Flags.string({ description: 'Backend IP/URL (e.g. 192.168.1.50)' }),
+    backend: Flags.string({ description: 'Backend IP/URL (e.g. 192.168.1.50)', default: 'localhost' }),
   }
 
   async run(): Promise<void> {

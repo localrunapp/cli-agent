@@ -71,9 +71,33 @@ rm -rf "$TMP_DIR"
 
 echo "LocalRun Agent installed successfully!"
 echo ""
-echo "Next steps:"
-echo "  1. Install as service:  localrun install"
-echo "  2. Start the service:   localrun start"
-echo "  3. Check status:        localrun status"
-echo ""
-echo "For help: localrun --help"
+
+# Check if BACKEND environment variable is set
+if [ -n "$BACKEND" ]; then
+  echo "Setting up service with backend: $BACKEND"
+  
+  # Build install command with backend
+  INSTALL_CMD="localrun install --backend $BACKEND"
+  
+  # Add port if specified
+  if [ -n "$PORT" ]; then
+    INSTALL_CMD="$INSTALL_CMD --port $PORT"
+  fi
+  
+  echo "Running: $INSTALL_CMD"
+  $INSTALL_CMD
+  
+  echo ""
+  echo "✅ LocalRun Agent is now running and connected to $BACKEND!"
+  echo ""
+  echo "Service commands:"
+  echo "  localrun status    # Check status"
+  echo "  localrun stop      # Stop service"
+  echo "  localrun start     # Start service"
+else
+  echo "Next steps:"
+  echo "  1. Install as service:  localrun install"
+  echo "  2. Or with backend:     localrun install --backend YOUR_BACKEND_IP"
+  echo ""
+  echo "For help: localrun --help"
+fi
