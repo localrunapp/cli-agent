@@ -71,8 +71,6 @@ export default class Serve extends Command {
         server_id: config.server_id,
         backend_host: backendInput, // Save the raw input (IP/Host)
         port: flags.port,
-        version: this.config.version,
-        pid: process.pid,
         started_at: new Date().toISOString(),
       }, null, 2))
 

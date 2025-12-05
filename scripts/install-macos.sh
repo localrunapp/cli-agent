@@ -72,32 +72,67 @@ rm -rf "$TMP_DIR"
 echo "LocalRun Agent installed successfully!"
 echo ""
 
-# Check if BACKEND environment variable is set
+# Verify installation
+echo "🔍 Verifying installation..."
+if ! command -v localrun &> /dev/null; then
+  echo "❌ Error: localrun command not found in PATH"
+  exit 1
+fi
+
+# Test that localrun works
+if ! localrun --version &> /dev/null; then
+  echo "❌ Error: localrun command not working properly"
+  exit 1
+fi
+
+VERSION=$(localrun --version 2>/dev/null | head -n1)
+echo "✅ LocalRun Agent $VERSION is working correctly"
+echo ""
+
+# Automatically install and configure service
+echo "🔧 Configuring service..."
+
+# Build install command
+INSTALL_CMD="localrun install"
+
+# Add backend if specified
 if [ -n "$BACKEND" ]; then
   echo "Setting up service with backend: $BACKEND"
+  INSTALL_CMD="$INSTALL_CMD --backend $BACKEND"
+else
+  echo "Setting up service with default backend (localhost)"
+fi
+
+# Add port if specified
+if [ -n "$PORT" ]; then
+  INSTALL_CMD="$INSTALL_CMD --port $PORT"
+fi
+
+echo "Running: $INSTALL_CMD"
+if $INSTALL_CMD; then
+  echo ""
+  echo "🎉 LocalRun Agent is now fully installed and running!"
   
-  # Build install command with backend
-  INSTALL_CMD="localrun install --backend $BACKEND"
-  
-  # Add port if specified
-  if [ -n "$PORT" ]; then
-    INSTALL_CMD="$INSTALL_CMD --port $PORT"
+  if [ -n "$BACKEND" ]; then
+    echo "📡 Connected to backend: $BACKEND"
+  else
+    echo "📡 Connected to backend: localhost (default)"
   fi
   
-  echo "Running: $INSTALL_CMD"
-  $INSTALL_CMD
-  
   echo ""
-  echo "✅ LocalRun Agent is now running and connected to $BACKEND!"
-  echo ""
-  echo "Service commands:"
+  echo "🔧 Service management commands:"
   echo "  localrun status    # Check status"
   echo "  localrun stop      # Stop service"
   echo "  localrun start     # Start service"
-else
-  echo "Next steps:"
-  echo "  1. Install as service:  localrun install"
-  echo "  2. Or with backend:     localrun install --backend YOUR_BACKEND_IP"
+  echo "  localrun logs      # View logs"
   echo ""
-  echo "For help: localrun --help"
+  echo "✨ Installation complete!"
+else
+  echo ""
+  echo "❌ Service installation failed. You can try manually:"
+  echo "  localrun install"
+  if [ -n "$BACKEND" ]; then
+    echo "  localrun install --backend $BACKEND"
+  fi
+  exit 1
 fi

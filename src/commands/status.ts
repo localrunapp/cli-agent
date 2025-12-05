@@ -39,7 +39,7 @@ export default class Status extends Command {
       if (existsSync(configPath)) {
         const config = JSON.parse(readFileSync(configPath, 'utf-8'))
         this.log(`Port:         ${chalk.blue(config.port || 47777)}`)
-        this.log(`Version:      ${chalk.blue(config.version || 'unknown')}`)
+        this.log(`Version:      ${chalk.blue(this.config.version)}`)
         if (config.started_at) {
           this.log(`Started:      ${chalk.gray(new Date(config.started_at).toLocaleString())}`)
         }
