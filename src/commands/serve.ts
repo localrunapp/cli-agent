@@ -56,7 +56,25 @@ export default class Serve extends Command {
 
     const app = express()
     app.use(express.json())
-    // ... (middleware and routes unchanged) ...
+
+    // Store start time for uptime calculation
+    const startTime = Date.now()
+
+    // Health check endpoint
+    app.get('/health', (req, res) => {
+      const uptime = Math.floor((Date.now() - startTime) / 1000) // seconds
+      res.json({
+        status: 'ok',
+        uptime,
+        version: require('../../package.json').version,
+        server_id: config.server_id || 'not-initialized',
+        platform: os.platform(),
+        arch: os.arch(),
+        hostname: os.hostname(),
+        timestamp: new Date().toISOString()
+      })
+    })
+
     app.listen(flags.port, flags.host, () => {
       this.log(chalk.green('✓') + ` LocalRun Agent listening on ${chalk.blue(`http://${flags.host}:${flags.port}`)}`)
       this.log(chalk.green('✓') + ` Backend URL: ${chalk.blue(wsUrl)}`)
