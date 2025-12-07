@@ -89,8 +89,8 @@ User=root
 ExecStart=${serveCommand}
 Restart=always
 RestartSec=10
-StandardOutput=append:/root/.localrun/logs/agent.log
-StandardError=append:/root/.localrun/logs/agent.log
+StandardOutput=journal
+StandardError=journal
 Environment=PATH=${process.env.PATH}
 
 [Install]

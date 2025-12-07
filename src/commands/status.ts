@@ -93,7 +93,12 @@ export default class Status extends Command {
     }
 
     this.log('')
-    this.log(chalk.gray('Log file: ~/Library/Logs/localrun-agent.log'))
+    this.log('')
+    if (process.platform === 'linux') {
+      this.log(chalk.gray('Log command: journalctl -u localrun-agent -n 50'))
+    } else {
+      this.log(chalk.gray('Log file: ~/Library/Logs/localrun-agent.log'))
+    }
     this.log('')
   }
 }
