@@ -21,6 +21,19 @@ export default class Logs extends Command {
     const { flags } = await this.parse(Logs)
     const logPath = join(homedir(), '.localrun', 'logs', 'agent.log')
 
+    if (process.platform === 'linux') {
+      // Use journalctl for Linux
+      const args = ['-u', 'localrun-agent', '-n', '50']
+      if (flags.follow) args.push('-f')
+
+      const journal = spawn('journalctl', args, { stdio: 'inherit' })
+
+      journal.on('close', () => {
+        process.exit(0)
+      })
+      return
+    }
+
     if (!existsSync(logPath)) {
       this.warn('⚠️  No logs available yet')
       return
