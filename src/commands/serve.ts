@@ -416,4 +416,28 @@ export default class Serve extends Command {
 
     return Number((100 - (idle / total) * 100).toFixed(2))
   }
+
+  async runServiceDiscovery(ws: WebSocket, serverId: string) {
+    try {
+      const { Scanner } = require('../lib/scanner')
+      const scanner = new Scanner()
+
+      // Scan localhost common ports
+      const results = await scanner.scan('127.0.0.1')
+
+      if (results.length > 0) {
+        this.log(chalk.green('✓') + ` Discovered ${results.length} services`)
+
+        ws.send(JSON.stringify({
+          type: 'service_discovery_result',
+          server_id: serverId,
+          data: results
+        }))
+      } else {
+        this.log(chalk.yellow('⚠') + ' No services discovered')
+      }
+    } catch (error) {
+      this.log(chalk.red('✗') + ' Service discovery failed: ' + (error as Error).message)
+    }
+  }
 }
