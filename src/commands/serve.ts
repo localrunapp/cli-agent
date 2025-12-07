@@ -93,7 +93,9 @@ export default class Serve extends Command {
       }, null, 2))
 
       // Start heartbeat
-      this.startHeartbeat(config.server_id)
+      // Derive HTTP URL from WebSocket URL
+      const httpUrl = wsUrl.replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws/terminal/agent', '')
+      this.startHeartbeat(config.server_id, httpUrl)
 
       // Connect to Terminal Backend
       this.connectToTerminalBackend(wsUrl, config.server_id)
@@ -148,8 +150,15 @@ export default class Serve extends Command {
               this.log(chalk.yellow('! Server ID updated by backend. Updating config and restarting...'))
               config.server_id = message.config.server_id
               writeFileSync(configPath, JSON.stringify(config, null, 2))
-              process.exit(0) // Restart service (managed by systemd/launchd)
+
+              // Restart process? Or just update memory?
+              // For now just update memory if possible or let it be
             }
+          } else if (message.type === 'registration_success') {
+            this.log(chalk.green('✓') + ' Agent registered successfully with backend')
+          } else if (message.type === 'start_service_discovery') {
+            this.log(chalk.blue('ℹ') + ' Starting service discovery...')
+            this.runServiceDiscovery(ws, serverId)
           }
         } else if (message.type === 'scan_request') {
           this.log(chalk.blue('ℹ') + ' Received scan request')
@@ -181,7 +190,15 @@ export default class Serve extends Command {
   }
 
   spawnShell(ws: WebSocket) {
-    const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash'
+    // Detect user's default shell
+    let shell: string
+    if (os.platform() === 'win32') {
+      shell = 'powershell.exe'
+    } else {
+      // On Unix-like systems, use SHELL env var or fallback to bash
+      shell = process.env.SHELL || '/bin/bash'
+    }
+
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-color',
       cols: 80,
@@ -199,11 +216,11 @@ export default class Serve extends Command {
     return ptyProcess
   }
 
-  async startHeartbeat(serverId: string) {
+  async startHeartbeat(serverId: string, backendUrl: string) {
     const sendHeartbeat = async () => {
       try {
         const stats = await this.getSystemStats(serverId)
-        await fetch('http://localhost:8000/agent/heartbeat', {
+        await fetch(`${backendUrl}/agent/heartbeat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(stats),

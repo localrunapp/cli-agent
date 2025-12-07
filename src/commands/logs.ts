@@ -1,8 +1,8 @@
-import {Command, Flags} from '@oclif/core'
-import {homedir} from 'os'
-import {join} from 'path'
-import {existsSync} from 'fs'
-import {spawn} from 'child_process'
+import { Command, Flags } from '@oclif/core'
+import { homedir } from 'os'
+import { join } from 'path'
+import { existsSync } from 'fs'
+import { spawn } from 'child_process'
 import chalk from 'chalk'
 
 export default class Logs extends Command {
@@ -14,12 +14,12 @@ export default class Logs extends Command {
   ]
 
   static flags = {
-    follow: Flags.boolean({char: 'f', description: 'Follow logs in real-time'}),
+    follow: Flags.boolean({ char: 'f', description: 'Follow logs in real-time' }),
   }
 
   async run(): Promise<void> {
-    const {flags} = await this.parse(Logs)
-    const logPath = join(homedir(), 'Library', 'Logs', 'localrun-agent.log')
+    const { flags } = await this.parse(Logs)
+    const logPath = join(homedir(), '.localrun', 'logs', 'agent.log')
 
     if (!existsSync(logPath)) {
       this.warn('⚠️  No logs available yet')
@@ -30,9 +30,9 @@ export default class Logs extends Command {
       this.log(chalk.gray(`Following logs from ${logPath}...`))
       this.log(chalk.gray('Press Ctrl+C to exit'))
       this.log('')
-      
+
       const tail = spawn('tail', ['-f', logPath])
-      
+
       tail.stdout.on('data', (data) => {
         process.stdout.write(data)
       })
@@ -50,7 +50,7 @@ export default class Logs extends Command {
       })
     } else {
       const cat = spawn('tail', ['-n', '50', logPath])
-      
+
       cat.stdout.on('data', (data) => {
         process.stdout.write(data)
       })

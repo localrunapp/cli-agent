@@ -9,8 +9,8 @@ export default class Install extends Command {
   static description = 'Install LocalRun Agent as system service (LaunchAgent)'
 
   static flags = {
-    backend: Flags.string({ 
-      char: 'b', 
+    backend: Flags.string({
+      char: 'b',
       description: 'Backend server URL (e.g., 192.168.1.50)',
       required: false
     }),
@@ -29,7 +29,7 @@ export default class Install extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Install)
-    
+
     this.log(chalk.blue('📦 Installing LocalRun Agent...'))
 
     try {
@@ -37,6 +37,13 @@ export default class Install extends Command {
       if (!existsSync(configDir)) {
         mkdirSync(configDir, { recursive: true })
         this.log(chalk.green('✓') + ' Configuration directory created')
+      }
+
+      // Create logs directory
+      const logsDir = join(configDir, 'logs')
+      if (!existsSync(logsDir)) {
+        mkdirSync(logsDir, { recursive: true })
+        this.log(chalk.green('✓') + ' Logs directory created')
       }
 
       let binaryPath = execSync('which localrun', { encoding: 'utf-8' }).trim()
@@ -82,8 +89,8 @@ User=root
 ExecStart=${serveCommand}
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/localrun-agent.log
-StandardError=append:/var/log/localrun-agent.log
+StandardOutput=append:/root/.localrun/logs/agent.log
+StandardError=append:/root/.localrun/logs/agent.log
 Environment=PATH=${process.env.PATH}
 
 [Install]
@@ -95,10 +102,10 @@ WantedBy=multi-user.target
         // Reload, enable and start service automatically
         this.log(chalk.blue('🔄 Reloading systemd...'))
         execSync('systemctl daemon-reload', { stdio: 'inherit' })
-        
+
         this.log(chalk.blue('🔧 Enabling and starting service...'))
         execSync('systemctl enable --now localrun-agent', { stdio: 'inherit' })
-        
+
         this.log(chalk.green('✓ LocalRun Agent service is now running!'))
         this.log('')
         this.log(chalk.blue('Service commands:'))
@@ -109,7 +116,7 @@ WantedBy=multi-user.target
       } else {
         // macOS LaunchAgent
         const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.localrun.agent.plist')
-        
+
         // Build ProgramArguments array
         let programArgs = [
           `        <string>${binaryPath}</string>`,
@@ -117,12 +124,12 @@ WantedBy=multi-user.target
           `        <string>--port</string>`,
           `        <string>${flags.port}</string>`
         ]
-        
+
         if (flags.backend) {
           programArgs.push(`        <string>--backend</string>`)
           programArgs.push(`        <string>${flags.backend}</string>`)
         }
-        
+
         const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -137,10 +144,15 @@ ${programArgs.join('\n')}
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${process.env.PATH}</string>
+    </dict>
     <key>StandardOutPath</key>
-    <string>${homedir()}/Library/Logs/localrun-agent.log</string>
+    <string>${homedir()}/.localrun/logs/agent.log</string>
     <key>StandardErrorPath</key>
-    <string>${homedir()}/Library/Logs/localrun-agent.log</string>
+    <string>${homedir()}/.localrun/logs/agent.log</string>
     <key>WorkingDirectory</key>
     <string>${homedir()}</string>
 </dict>
@@ -163,7 +175,7 @@ ${programArgs.join('\n')}
           execSync('launchctl unload ~/Library/LaunchAgents/com.localrun.agent.plist 2>/dev/null || true', { stdio: 'inherit' })
           // Load and start
           execSync('launchctl load ~/Library/LaunchAgents/com.localrun.agent.plist', { stdio: 'inherit' })
-          
+
           this.log(chalk.green('✓ LocalRun Agent service is now running!'))
           this.log('')
           this.log(chalk.blue('Service commands:'))

@@ -97,6 +97,30 @@ INSTALL_CMD="localrun install"
 
 # Add backend if specified
 if [ -n "$BACKEND" ]; then
+  echo "🔍 Verifying connection to backend: $BACKEND..."
+  
+  # Extract host and port (simple check)
+  if [[ "$BACKEND" != *":"* ]]; then
+     CHECK_URL="http://$BACKEND:8000/health"
+  else
+     CHECK_URL="http://$BACKEND/health"
+  fi
+
+  if curl -s --connect-timeout 5 "$CHECK_URL" > /dev/null; then
+    echo "✅ Connection successful!"
+  else
+    echo "⚠️  Warning: Could not connect to backend at $BACKEND"
+    echo "   The agent might not be able to register automatically."
+    echo "   Check if the IP/Port is correct and accessible from this machine."
+    
+    read -p "   Do you want to continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo "❌ Installation aborted."
+      exit 1
+    fi
+  fi
+
   echo "Setting up service with backend: $BACKEND"
   INSTALL_CMD="$INSTALL_CMD --backend $BACKEND"
 else
