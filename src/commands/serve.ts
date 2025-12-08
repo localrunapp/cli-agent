@@ -51,7 +51,7 @@ export default class Serve extends Command {
       if (!wsUrl.includes(':')) {
         wsUrl = `${wsUrl}:8000`
       }
-      wsUrl = `ws://${wsUrl}/ws/terminal/agent`
+      wsUrl = `ws://${wsUrl}/ws/agent`
     }
 
     const app = express()
@@ -92,27 +92,42 @@ export default class Serve extends Command {
         started_at: new Date().toISOString(),
       }, null, 2))
 
-      // Start heartbeat
-      // Derive HTTP URL from WebSocket URL
-      const httpUrl = wsUrl.replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws/terminal/agent', '')
-      this.startHeartbeat(config.server_id, httpUrl)
+      // Start heartbeat (deprecated - will use WebSocket stats instead)
+      // const httpUrl = wsUrl.replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws/agent', '')
+      // this.startHeartbeat(config.server_id, httpUrl)
 
-      // Connect to Terminal Backend
-      this.connectToTerminalBackend(wsUrl, config.server_id)
+      // Connect to Agent Control Channel
+      this.connectToAgentControl(wsUrl, config.server_id)
+
+      // Connect to Stats Channel (per-server)
+      const statsWsUrl = wsUrl.replace('/ws/agent', `/agent/servers/${config.server_id}/stats`)
+      this.connectToStatsChannel(statsWsUrl, config.server_id)
+
+      // Terminal channel will be connected on-demand (when backend requests it)
+      // For now, we'll keep it simple and not auto-connect
     })
   }
 
-  connectToTerminalBackend(wsUrl: string, serverId: string) {
+  connectToAgentControl(wsUrl: string, serverId: string) {
     const ws = new WebSocket(wsUrl)
-    let ptyProcess: any = null
 
-    ws.on('open', () => {
-      this.log(chalk.green('✓') + ' Connected to Terminal Backend')
+    ws.on('open', async () => {
+      this.log(chalk.green('\u2713') + ' Connected to Agent Control Channel')
+
+      // Detect if connecting to localhost
+      const isLocalhost = wsUrl.includes('localhost') ||
+        wsUrl.includes('127.0.0.1') ||
+        wsUrl.includes('::1')
+
+      // Get local IP
+      const hostInfo = await getHostInfo()
 
       // Register with server_id
       ws.send(JSON.stringify({
         type: 'register',
         server_id: serverId,
+        is_localhost: isLocalhost,  // Tell backend if this is localhost
+        local_ip: hostInfo.localIP,  // Send actual local IP
         system_info: {
           hostname: os.hostname(),
           platform: os.platform(),
@@ -126,16 +141,7 @@ export default class Serve extends Command {
       try {
         const message = JSON.parse(data.toString())
 
-        if (message.type === 'terminal_input') {
-          if (!ptyProcess) {
-            ptyProcess = this.spawnShell(ws)
-          }
-          ptyProcess.write(message.data)
-        } else if (message.type === 'terminal_resize') {
-          if (ptyProcess) {
-            ptyProcess.resize(message.cols, message.rows)
-          }
-        } else if (message.type === 'config_update') {
+        if (message.type === 'config_update') {
           // Handle config update (e.g. server_id assignment)
           if (message.config && message.config.server_id) {
             const configPath = join(homedir(), '.localrun', 'agent.json')
@@ -151,24 +157,25 @@ export default class Serve extends Command {
               config.server_id = message.config.server_id
               writeFileSync(configPath, JSON.stringify(config, null, 2))
 
-              // Restart process? Or just update memory?
-              // For now just update memory if possible or let it be
+              // Exit to let systemd/launchd restart us
+              process.exit(0)
             }
-          } else if (message.type === 'registration_success') {
-            this.log(chalk.green('✓') + ' Agent registered successfully with backend')
-          } else if (message.type === 'start_service_discovery') {
-            this.log(chalk.blue('ℹ') + ' Starting service discovery...')
-            this.runServiceDiscovery(ws, serverId)
           }
+        } else if (message.type === 'registration_success') {
+          this.log(chalk.green('\u2713') + ' Agent registered successfully')
+        } else if (message.type === 'start_service_discovery') {
+          this.log(chalk.blue('\u2139') + ' Starting service discovery...')
+          this.runServiceDiscovery(ws, serverId)
         } else if (message.type === 'scan_request') {
-          this.log(chalk.blue('ℹ') + ' Received scan request')
+          this.log(chalk.blue('\u2139') + ' Received scan request')
           const scanner = new Scanner()
-          // If target is provided, scan specific host, otherwise scan local network
           const results = await scanner.scan(message.target)
           ws.send(JSON.stringify({
             type: 'scan_result',
             results
           }))
+        } else if (message.type === 'pong') {
+          // Keepalive response
         }
       } catch (error) {
         // Ignore malformed messages
@@ -176,16 +183,64 @@ export default class Serve extends Command {
     })
 
     ws.on('close', () => {
-      this.log(chalk.red('✗') + ' Disconnected from Terminal Backend. Reconnecting in 5s...')
-      if (ptyProcess) {
-        ptyProcess.kill()
-        ptyProcess = null
-      }
-      setTimeout(() => this.connectToTerminalBackend(wsUrl, serverId), 5000)
+      this.log(chalk.red('\u2717') + ' Disconnected from Agent Control Channel. Reconnecting in 5s...')
+      setTimeout(() => this.connectToAgentControl(wsUrl, serverId), 5000)
     })
 
     ws.on('error', (error) => {
-      this.log(chalk.red('✗') + ` WebSocket Error: ${error.message}`)
+      this.log(chalk.red('✗') + ` Control Channel Error: ${error.message}`)
+    })
+  }
+
+  connectToStatsChannel(wsUrl: string, serverId: string) {
+    const ws = new WebSocket(wsUrl)
+
+    ws.on('open', () => {
+      this.log(chalk.green('\u2713') + ' Connected to Stats Channel')
+
+      // Send stats every 5 seconds
+      const statsInterval = setInterval(async () => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          clearInterval(statsInterval)
+          return
+        }
+
+        try {
+          const stats = await this.getSystemStats(serverId)
+          ws.send(JSON.stringify(stats))
+        } catch (error: any) {
+          this.log(chalk.red('\u2717') + ` Error getting stats: ${error.message}`)
+        }
+      }, 5000)
+
+      // Send initial stats immediately
+      this.getSystemStats(serverId).then(stats => {
+        ws.send(JSON.stringify(stats))
+      }).catch(error => {
+        this.log(chalk.red('\u2717') + ` Error sending initial stats: ${error.message}`)
+      })
+    })
+
+    ws.on('message', (data: WebSocket.Data) => {
+      try {
+        const message = JSON.parse(data.toString())
+        if (message.type === 'error') {
+          this.log(chalk.red('\u2717') + ` Stats Channel Error: ${message.message}`)
+          this.log(chalk.yellow('!') + ' Server not registered. Waiting for control channel to re-register...')
+          ws.close()
+        }
+      } catch (error) {
+        // Ignore non-JSON messages
+      }
+    })
+
+    ws.on('close', () => {
+      this.log(chalk.red('\u2717') + ' Disconnected from Stats Channel. Reconnecting in 10s...')
+      setTimeout(() => this.connectToStatsChannel(wsUrl, serverId), 10000)  // Wait longer for re-registration
+    })
+
+    ws.on('error', (error) => {
+      this.log(chalk.red('\u2717') + ` Stats Channel Error: ${error.message}`)
     })
   }
 
