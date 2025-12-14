@@ -23,8 +23,8 @@ export interface ServiceInfo {
 
 export class Scanner {
     private commonPorts = [
-        21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995,
-        1433, 3306, 3389, 5432, 5900, 6379, 8000, 8008, 8080, 8443, 8888, 9200, 27017
+        21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 631, 993, 995,
+        1433, 2377, 3000, 3001, 3306, 3389, 5432, 5900, 6379, 7946, 8000, 8008, 8080, 8443, 8888, 9200, 20241, 27017, 47777
     ]
 
     private dockerContainers: Container[] = []
@@ -75,6 +75,7 @@ export class Scanner {
         return new Promise(async (resolve) => {
             const socket = new net.Socket()
             let status: 'open' | 'closed' = 'closed'
+            let banner = ''
 
             // Check if port maps to Docker container
             const dockerInfo = this.findDockerContainer(port)
@@ -82,7 +83,7 @@ export class Scanner {
             const processInfo = this.findHostProcess(port)
 
             // Shorter timeout for faster scanning
-            socket.setTimeout(500)
+            socket.setTimeout(1000) // Increased slightly for banner wait
 
             socket.on('connect', async () => {
                 status = 'open'
@@ -94,7 +95,7 @@ export class Scanner {
                 resolve({
                     port,
                     state: status,
-                    protocol: 'tcp', // Currently only checking TCP
+                    protocol: 'tcp',
                     service: info.service,
                     version: info.version,
                     banner: info.banner,
@@ -143,27 +144,57 @@ export class Scanner {
     }
 
     private async identifyService(host: string, port: number, socket: net.Socket): Promise<{ service: string, version?: string, banner?: string }> {
+        // 0. Known Port Map
+        const knownPorts: { [key: number]: string } = {
+            21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS', 80: 'HTTP', 443: 'HTTPS',
+            631: 'CUPS (IPP)', 3306: 'MySQL', 5432: 'PostgreSQL', 6379: 'Redis',
+            27017: 'MongoDB', 2377: 'Docker Swarm (Mgmt)', 7946: 'Docker Swarm (Node)',
+            47777: 'LocalRun Helper'
+        }
+
         // 1. Check if it's HTTP
         try {
             const httpInfo = await this.checkHttp(host, port)
             if (httpInfo) return httpInfo
         } catch (e) { }
 
-        // 2. Protocol specific probes
-        // Redis
-        if (port === 6379 || port === 6389) return { service: 'Redis' }
-        // Postgres
-        if (port === 5432 || (port >= 5433 && port <= 5439)) return { service: 'PostgreSQL' }
-        // MySQL
-        if (port === 3306 || port === 33069) return { service: 'MySQL' }
-        // SSH
-        if (port === 22) return { service: 'SSH' }
-        // DNS
-        if (port === 53) return { service: 'DNS' }
+        // 2. Banner Grabbing for unknown/generic TCP services
+        // We listen for data for a short time
+        const banner = await this.grabBanner(socket)
+        if (banner) {
+            if (banner.startsWith('SSH-')) return { service: 'SSH', version: banner.trim(), banner }
+            if (banner.startsWith('220')) return { service: 'FTP/SMTP', banner: banner.trim() }
+            if (banner.includes('mysql_native_password')) return { service: 'MySQL', banner: banner.trim() }
 
-        // 3. Generic banner grab (if socket is still usable, though we might need a new one)
-        // For now, let's return Unknown if specific checks fail
+            // If we have a banner but don't recognize it, return generic with banner
+            return { service: knownPorts[port] || 'Unknown (TCP)', banner: banner.trim().substring(0, 50) }
+        }
+
+        // 3. Fallback to known port map
+        if (knownPorts[port]) return { service: knownPorts[port] }
+
         return { service: 'Unknown' }
+    }
+
+    private grabBanner(socket: net.Socket): Promise<string> {
+        return new Promise((resolve) => {
+            let data = ''
+            const listener = (chunk: Buffer) => {
+                data += chunk.toString()
+                // If we got something, clear timeout and resolve
+                if (data.length > 0) {
+                    resolve(data)
+                }
+            }
+
+            socket.on('data', listener)
+
+            // Wait max 500ms for a banner
+            setTimeout(() => {
+                socket.removeListener('data', listener)
+                resolve(data)
+            }, 500)
+        })
     }
 
     private checkHttp(host: string, port: number): Promise<{ service: string, version?: string, banner?: string } | null> {

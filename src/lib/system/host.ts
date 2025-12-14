@@ -1,5 +1,5 @@
 import { execSync } from 'child_process'
-import { hostname, platform, arch, totalmem, freemem, cpus, uptime } from 'os'
+import { hostname, platform, arch, totalmem, freemem, cpus, uptime, networkInterfaces } from 'os'
 
 export interface HostInfo {
   hostname: string
@@ -17,24 +17,21 @@ export async function getHostInfo(): Promise<HostInfo> {
   let localIP = '127.0.0.1'
 
   try {
-    // Use Node.js built-in networkInterfaces to get private IP
-    const { networkInterfaces } = require('os')
     const interfaces = networkInterfaces()
 
     // Interfaces to exclude (Docker, VPN, virtual)
     const excludePatterns = [
       'docker', 'veth', 'br-', 'virbr', 'vmnet', 'vboxnet',
-      'utun', 'awdl', 'llw', 'bridge', 'tun', 'tap'
+      'utun', 'awdl', 'llw', 'bridge', 'tun', 'tap', 'cni', 'flannel'
     ]
 
     // Priority order: physical network interfaces first
     const priorityInterfaces = [
-      'wlp3s0',    // Linux WiFi (common naming)
-      'eth0',      // Linux Ethernet
-      'enp',       // Linux Ethernet (predictable naming)
-      'wlan0',     // Linux WiFi (older naming)
-      'en0',       // macOS WiFi/Ethernet
-      'en1',       // macOS secondary
+      'wlp',       // Linux WiFi
+      'eth',       // Linux Ethernet
+      'enp',       // Linux Ethernet
+      'wlan',      // Linux WiFi
+      'en',        // macOS WiFi/Ethernet
       'Wi-Fi',     // Windows WiFi
       'Ethernet'   // Windows Ethernet
     ]
@@ -42,68 +39,68 @@ export async function getHostInfo(): Promise<HostInfo> {
     // Helper to check if interface should be excluded
     const shouldExclude = (ifaceName: string): boolean => {
       const lowerName = ifaceName.toLowerCase()
-      return excludePatterns.some(pattern => lowerName.includes(pattern))
+      // Always exclude if matches pattern
+      if (excludePatterns.some(pattern => lowerName.includes(pattern))) return true
+      return false
     }
 
-    // First try priority interfaces (physical network)
-    for (const ifaceName of priorityInterfaces) {
-      // Check exact match or starts with (for enp*, wlp*, etc)
-      const matchingIfaces = Object.keys(interfaces).filter(name =>
-        name === ifaceName || name.startsWith(ifaceName)
+    let found = false
+
+    // 1. Try priority interfaces first
+    for (const priority of priorityInterfaces) {
+      const matchingNames = Object.keys(interfaces).filter(name =>
+        name.toLowerCase().startsWith(priority.toLowerCase())
       )
 
-      for (const name of matchingIfaces) {
+      for (const name of matchingNames) {
         if (shouldExclude(name)) continue
 
-        for (const iface of interfaces[name]) {
-          // IPv4, not internal, not loopback
+        for (const iface of interfaces[name] || []) {
+          // IPv4, not internal
           if (iface.family === 'IPv4' && !iface.internal) {
             const addr = iface.address
-            // Verify it's a private IP
+            // Verify it's a private IP (LAN)
             if (addr.startsWith('192.168.') || addr.startsWith('10.') ||
               (addr.startsWith('172.') && parseInt(addr.split('.')[1]) >= 16 && parseInt(addr.split('.')[1]) <= 31)) {
               localIP = addr
+              found = true
               break
             }
           }
         }
-        if (localIP !== '127.0.0.1') break
+        if (found) break
       }
-      if (localIP !== '127.0.0.1') break
+      if (found) break
     }
 
-    // If still not found, scan all interfaces (excluding Docker/virtual)
-    if (localIP === '127.0.0.1') {
-      for (const ifaceName of Object.keys(interfaces)) {
-        // Skip excluded interfaces
-        if (shouldExclude(ifaceName)) continue
+    // 2. If no priority interface found, scan ALL non-excluded interfaces
+    if (!found) {
+      for (const name of Object.keys(interfaces)) {
+        if (shouldExclude(name)) continue
 
-        for (const iface of interfaces[ifaceName]) {
-          // IPv4, not internal, private IP range
+        for (const iface of interfaces[name] || []) {
           if (iface.family === 'IPv4' && !iface.internal) {
             const addr = iface.address
-            // Check if it's a private IP (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
             if (addr.startsWith('192.168.') || addr.startsWith('10.') ||
               (addr.startsWith('172.') && parseInt(addr.split('.')[1]) >= 16 && parseInt(addr.split('.')[1]) <= 31)) {
               localIP = addr
+              found = true
               break
             }
           }
         }
-        if (localIP !== '127.0.0.1') break
+        if (found) break
       }
     }
+
   } catch (error) {
     console.error('Error detecting network IP:', error)
-    // Fallback to 127.0.0.1
   }
 
   let username = 'unknown'
   try {
     username = execSync('whoami', { encoding: 'utf-8' }).trim()
-  } catch {
-    // Fallback
-  }
+  } catch { }
 
   return {
     hostname: hostname(),
