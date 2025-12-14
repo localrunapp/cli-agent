@@ -405,6 +405,14 @@ export default class Serve extends Command {
         }
       })
 
+      // Verification: Send immediate welcome message
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'terminal_output',
+          data: `\r\n\u001b[32m✔ LocalRun: Connected to ${shell}\u001b[0m\r\n`
+        }))
+      }
+
       // Handle process exit
       ptyProcess.onExit(({ exitCode, signal }) => {
         this.log(chalk.yellow('!') + ` Shell exited with code ${exitCode}, signal ${signal}`)
