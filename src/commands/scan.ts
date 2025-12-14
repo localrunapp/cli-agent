@@ -56,11 +56,11 @@ export default class Scan extends Command {
             this.log(chalk.green(`\nFound ${results.length} open ports:`))
 
             // Simple table output
-            this.log(chalk.bold('PORT\tSTATE\tSERVICE\tVERSION\t\tPROCESS\t\tDOCKER'))
+            this.log(chalk.bold('PORT\tPROTOCOL\tSTATE\tSERVICE\tVERSION\t\tPROCESS\t\tDOCKER'))
             results.forEach(r => {
                 const dockerInfo = r.docker ? `${r.docker.image} (${r.docker.name})` : ''
                 const processInfo = r.process ? `${r.process.name} (${r.process.pid})` : ''
-                this.log(`${r.port}\t${chalk.green(r.state)}\t${r.service || 'Unknown'}\t${r.version || ''}\t\t${chalk.yellow(processInfo)}\t\t${chalk.cyan(dockerInfo)}`)
+                this.log(`${r.port}\t${r.protocol.toUpperCase()}\t\t${chalk.green(r.state)}\t${r.service || 'Unknown'}\t${r.version || ''}\t\t${chalk.yellow(processInfo)}\t\t${chalk.cyan(dockerInfo)}`)
             })
 
         } catch (error) {

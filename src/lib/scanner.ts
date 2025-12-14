@@ -6,6 +6,7 @@ import { getOpenPorts, Port } from './system/ports'
 export interface ServiceInfo {
     port: number
     state: 'open' | 'closed'
+    protocol: 'tcp' | 'udp' // Added protocol
     service?: string
     version?: string
     banner?: string
@@ -31,21 +32,34 @@ export class Scanner {
 
     async scan(host: string = '127.0.0.1', ports: number[] = this.commonPorts): Promise<ServiceInfo[]> {
         const results: ServiceInfo[] = []
+        let portsToScan = new Set<number>(ports);
 
         // Fetch Docker containers and Host ports if scanning localhost
         if (host === '127.0.0.1' || host === 'localhost') {
-            const [containers, openPorts] = await Promise.all([
-                getDockerContainers(),
-                getOpenPorts()
-            ])
-            this.dockerContainers = containers
-            this.hostPorts = openPorts
+            try {
+                const [containers, openPorts] = await Promise.all([
+                    getDockerContainers(),
+                    getOpenPorts()
+                ])
+                this.dockerContainers = containers
+                this.hostPorts = openPorts
+
+                // Add automatically detected ports to the scan list
+                openPorts.forEach(p => portsToScan.add(p.port));
+                containers.forEach(c => c.ports.forEach(p => {
+                    if (p.public) portsToScan.add(p.public);
+                }));
+            } catch (error) {
+                console.error('Error detecting local ports:', error);
+            }
         }
+
+        const sortedPorts = Array.from(portsToScan).sort((a, b) => a - b);
 
         // Increase concurrency for faster scanning
         const batchSize = 100
-        for (let i = 0; i < ports.length; i += batchSize) {
-            const batch = ports.slice(i, i + batchSize)
+        for (let i = 0; i < sortedPorts.length; i += batchSize) {
+            const batch = sortedPorts.slice(i, i + batchSize)
             const batchResults = await Promise.all(batch.map(port => this.checkPort(host, port)))
             results.push(...batchResults.filter(r => r.state === 'open'))
         }
@@ -80,6 +94,7 @@ export class Scanner {
                 resolve({
                     port,
                     state: status,
+                    protocol: 'tcp', // Currently only checking TCP
                     service: info.service,
                     version: info.version,
                     banner: info.banner,
@@ -90,12 +105,12 @@ export class Scanner {
 
             socket.on('timeout', () => {
                 socket.destroy()
-                resolve({ port, state: 'closed' })
+                resolve({ port, state: 'closed', protocol: 'tcp' })
             })
 
             socket.on('error', () => {
                 socket.destroy()
-                resolve({ port, state: 'closed' })
+                resolve({ port, state: 'closed', protocol: 'tcp' })
             })
 
             socket.connect(port, host)

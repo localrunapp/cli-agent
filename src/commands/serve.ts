@@ -164,6 +164,10 @@ export default class Serve extends Command {
       const statsWsUrl = wsUrl.replace('/ws/agent', `/agent/servers/${serverId}/stats`)
       this.connectToStatsChannel(statsWsUrl, serverId)
 
+      // Connect to Terminal Channel
+      const terminalWsUrl = wsUrl.replace('/ws/agent', `/agent/servers/${serverId}/terminal`)
+      this.connectToTerminalChannel(terminalWsUrl, serverId)
+
     } catch (error: any) {
       this.log(chalk.red('✗') + ` Handshake error: ${error.message}`)
       this.log(chalk.yellow('!') + ` Falling back to direct connection...`)
@@ -172,6 +176,8 @@ export default class Serve extends Command {
       this.connectToAgentControl(wsUrl, serverId)
       const statsWsUrl = wsUrl.replace('/ws/agent', `/agent/servers/${serverId}/stats`)
       this.connectToStatsChannel(statsWsUrl, serverId)
+      const terminalWsUrl = wsUrl.replace('/ws/agent', `/agent/servers/${serverId}/terminal`)
+      this.connectToTerminalChannel(terminalWsUrl, serverId)
     }
   }
 
@@ -310,32 +316,117 @@ export default class Serve extends Command {
       this.log(chalk.red('\u2717') + ` Stats Channel Error: ${error.message}`)
     })
   }
+  connectToTerminalChannel(wsUrl: string, serverId: string) {
+    const ws = new WebSocket(wsUrl)
+    let ptyProcess: any = null
 
-  spawnShell(ws: WebSocket) {
-    // Detect user's default shell
-    let shell: string
-    if (os.platform() === 'win32') {
-      shell = 'powershell.exe'
-    } else {
-      // On Unix-like systems, use SHELL env var or fallback to bash
-      shell = process.env.SHELL || '/bin/bash'
-    }
+    ws.on('open', () => {
+      this.log(chalk.green('\u2713') + ' Connected to Terminal Channel')
 
-    const ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-color',
-      cols: 80,
-      rows: 24,
-      cwd: process.env.HOME,
-      env: process.env as any
+      // Spawn shell on connection
+      ptyProcess = this.spawnShell(ws)
     })
 
-    ptyProcess.onData((data: string) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'terminal_output', data }))
+    ws.on('message', (data: WebSocket.Data) => {
+      try {
+        const message = JSON.parse(data.toString())
+
+        if (message.type === 'terminal_input') {
+          if (ptyProcess) {
+            ptyProcess.write(message.data)
+          }
+        } else if (message.type === 'terminal_resize') {
+          if (ptyProcess) {
+            ptyProcess.resize(message.cols, message.rows)
+          }
+        }
+      } catch (error) {
+        // Ignore malformed messages
       }
     })
 
-    return ptyProcess
+    ws.on('close', () => {
+      this.log(chalk.red('\u2717') + ' Disconnected from Terminal Channel. Reconnecting in 5s...')
+      if (ptyProcess) {
+        ptyProcess.kill()
+        ptyProcess = null
+      }
+      setTimeout(() => this.connectToTerminalChannel(wsUrl, serverId), 5000)
+    })
+
+    ws.on('error', (error) => {
+      this.log(chalk.red('\u2717') + ` Terminal Channel Error: ${error.message}`)
+    })
+  }
+
+  spawnShell(ws: WebSocket) {
+    // Detect user's default shell
+    let shell: string = ''
+
+    if (os.platform() === 'win32') {
+      shell = 'powershell.exe'
+    } else {
+      // Robust shell detection for Unix-like systems
+      const candidates = [
+        process.env.SHELL,
+        '/bin/bash',
+        '/usr/bin/bash',
+        '/bin/zsh',
+        '/usr/bin/zsh',
+        '/bin/sh',
+        '/usr/bin/sh'
+      ]
+
+      for (const candidate of candidates) {
+        if (candidate && require('fs').existsSync(candidate)) {
+          shell = candidate
+          break
+        }
+      }
+
+      // Fallback if nothing found (unlikely)
+      if (!shell) shell = '/bin/sh'
+    }
+
+    try {
+      this.log(chalk.blue('ℹ') + ` Spawning terminal with shell: ${shell}`)
+
+      const ptyProcess = pty.spawn(shell, [], {
+        name: 'xterm-color',
+        cols: 80,
+        rows: 24,
+        cwd: process.env.HOME || process.cwd(), // Fallback if HOME is not set
+        env: process.env as any
+      })
+
+      ptyProcess.onData((data: string) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'terminal_output', data }))
+        }
+      })
+
+      // Handle process exit
+      ptyProcess.onExit(({ exitCode, signal }) => {
+        this.log(chalk.yellow('!') + ` Shell exited with code ${exitCode}, signal ${signal}`)
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'terminal_output',
+            data: `\r\n[Process exited with code ${exitCode}]\r\n`
+          }))
+        }
+      })
+
+      return ptyProcess
+    } catch (error: any) {
+      this.log(chalk.red('✗') + ` Failed to spawn shell: ${error.message}`)
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'terminal_output',
+          data: `\r\nError: Failed to spawn shell (${shell}): ${error.message}\r\n`
+        }))
+      }
+      return null
+    }
   }
 
   async startHeartbeat(serverId: string, backendUrl: string) {
