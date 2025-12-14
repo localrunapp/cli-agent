@@ -21,26 +21,63 @@ export async function getHostInfo(): Promise<HostInfo> {
     const { networkInterfaces } = require('os')
     const interfaces = networkInterfaces()
 
-    // Priority order: look for common interface names first
-    const priorityInterfaces = ['en0', 'eth0', 'en1', 'wlan0', 'Wi-Fi', 'Ethernet']
+    // Interfaces to exclude (Docker, VPN, virtual)
+    const excludePatterns = [
+      'docker', 'veth', 'br-', 'virbr', 'vmnet', 'vboxnet',
+      'utun', 'awdl', 'llw', 'bridge', 'tun', 'tap'
+    ]
 
-    // First try priority interfaces
+    // Priority order: physical network interfaces first
+    const priorityInterfaces = [
+      'wlp3s0',    // Linux WiFi (common naming)
+      'eth0',      // Linux Ethernet
+      'enp',       // Linux Ethernet (predictable naming)
+      'wlan0',     // Linux WiFi (older naming)
+      'en0',       // macOS WiFi/Ethernet
+      'en1',       // macOS secondary
+      'Wi-Fi',     // Windows WiFi
+      'Ethernet'   // Windows Ethernet
+    ]
+
+    // Helper to check if interface should be excluded
+    const shouldExclude = (ifaceName: string): boolean => {
+      const lowerName = ifaceName.toLowerCase()
+      return excludePatterns.some(pattern => lowerName.includes(pattern))
+    }
+
+    // First try priority interfaces (physical network)
     for (const ifaceName of priorityInterfaces) {
-      if (interfaces[ifaceName]) {
-        for (const iface of interfaces[ifaceName]) {
+      // Check exact match or starts with (for enp*, wlp*, etc)
+      const matchingIfaces = Object.keys(interfaces).filter(name =>
+        name === ifaceName || name.startsWith(ifaceName)
+      )
+
+      for (const name of matchingIfaces) {
+        if (shouldExclude(name)) continue
+
+        for (const iface of interfaces[name]) {
           // IPv4, not internal, not loopback
           if (iface.family === 'IPv4' && !iface.internal) {
-            localIP = iface.address
-            break
+            const addr = iface.address
+            // Verify it's a private IP
+            if (addr.startsWith('192.168.') || addr.startsWith('10.') ||
+              (addr.startsWith('172.') && parseInt(addr.split('.')[1]) >= 16 && parseInt(addr.split('.')[1]) <= 31)) {
+              localIP = addr
+              break
+            }
           }
         }
         if (localIP !== '127.0.0.1') break
       }
+      if (localIP !== '127.0.0.1') break
     }
 
-    // If still not found, scan all interfaces
+    // If still not found, scan all interfaces (excluding Docker/virtual)
     if (localIP === '127.0.0.1') {
       for (const ifaceName of Object.keys(interfaces)) {
+        // Skip excluded interfaces
+        if (shouldExclude(ifaceName)) continue
+
         for (const iface of interfaces[ifaceName]) {
           // IPv4, not internal, private IP range
           if (iface.family === 'IPv4' && !iface.internal) {

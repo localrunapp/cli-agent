@@ -92,20 +92,87 @@ export default class Serve extends Command {
         started_at: new Date().toISOString(),
       }, null, 2))
 
-      // Start heartbeat (deprecated - will use WebSocket stats instead)
-      // const httpUrl = wsUrl.replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws/agent', '')
-      // this.startHeartbeat(config.server_id, httpUrl)
-
-      // Connect to Agent Control Channel
-      this.connectToAgentControl(wsUrl, config.server_id)
-
-      // Connect to Stats Channel (per-server)
-      const statsWsUrl = wsUrl.replace('/ws/agent', `/agent/servers/${config.server_id}/stats`)
-      this.connectToStatsChannel(statsWsUrl, config.server_id)
-
-      // Terminal channel will be connected on-demand (when backend requests it)
-      // For now, we'll keep it simple and not auto-connect
+      // Perform handshake before connecting
+      this.performHandshakeAndConnect(wsUrl, config.server_id, backendInput)
     })
+  }
+
+  async performHandshakeAndConnect(wsUrl: string, serverId: string, backendHost: string) {
+    try {
+      // Construct HTTP URL from WebSocket URL
+      const httpUrl = wsUrl
+        .replace('ws://', 'http://')
+        .replace('wss://', 'https://')
+        .replace('/ws/agent', '')
+
+      // Get system info for handshake
+      const hostInfo = await getHostInfo()
+
+      this.log(chalk.blue('ℹ') + ` Performing handshake with backend...`)
+
+      // Call handshake endpoint
+      const response = await fetch(`${httpUrl}/agent/handshake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          server_id: serverId,
+          agent_version: require('../../package.json').version,
+          hostname: os.hostname()
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Handshake failed: ${response.status} ${response.statusText}`)
+      }
+
+      const handshakeResult = await response.json()
+
+      this.log(chalk.green('✓') + ` Handshake status: ${handshakeResult.status}`)
+
+      // Handle different handshake responses
+      if (handshakeResult.status === 'id_mismatch') {
+        // Localhost agent with old ID - update and reconnect
+        this.log(chalk.yellow('!') + ` Server ID mismatch detected`)
+        this.log(chalk.yellow('!') + ` Old ID: ${handshakeResult.old_id.substring(0, 8)}...`)
+        this.log(chalk.yellow('!') + ` New ID: ${handshakeResult.server_id.substring(0, 8)}...`)
+        this.log(chalk.blue('ℹ') + ` Updating local configuration...`)
+
+        // Update config with new server ID
+        const configPath = join(homedir(), '.localrun', 'agent.json')
+        const config = JSON.parse(require('fs').readFileSync(configPath, 'utf-8'))
+        config.server_id = handshakeResult.server_id
+        writeFileSync(configPath, JSON.stringify(config, null, 2))
+
+        this.log(chalk.green('✓') + ` Configuration updated successfully`)
+
+        // Reconnect with new ID
+        serverId = handshakeResult.server_id
+
+      } else if (handshakeResult.status === 'register_required') {
+        // Remote agent with invalid ID - will register via WebSocket
+        this.log(chalk.yellow('!') + ` Server not found in database`)
+        this.log(chalk.blue('ℹ') + ` Will register as new server...`)
+      } else if (handshakeResult.status === 'ok') {
+        // All good - proceed
+        this.log(chalk.green('✓') + ` Server validated: ${handshakeResult.message}`)
+      }
+
+      // Now connect to WebSocket with validated/updated ID
+      this.connectToAgentControl(wsUrl, serverId)
+
+      // Connect to Stats Channel
+      const statsWsUrl = wsUrl.replace('/ws/agent', `/agent/servers/${serverId}/stats`)
+      this.connectToStatsChannel(statsWsUrl, serverId)
+
+    } catch (error: any) {
+      this.log(chalk.red('✗') + ` Handshake error: ${error.message}`)
+      this.log(chalk.yellow('!') + ` Falling back to direct connection...`)
+
+      // Fallback: connect anyway (for backwards compatibility)
+      this.connectToAgentControl(wsUrl, serverId)
+      const statsWsUrl = wsUrl.replace('/ws/agent', `/agent/servers/${serverId}/stats`)
+      this.connectToStatsChannel(statsWsUrl, serverId)
+    }
   }
 
   connectToAgentControl(wsUrl: string, serverId: string) {
@@ -295,6 +362,7 @@ export default class Serve extends Command {
     const cpuPercent = await this.getCpuUsage()
     const diskInfo = this.getDiskInfo()
     const memInfo = await this.getMemoryUsage()
+    const ioStats = await this.getDiskIOStats()
 
     return {
       server_id: serverId,
@@ -306,6 +374,8 @@ export default class Serve extends Command {
       memory_percent: memInfo.percent,
       disk_gb: Number(diskInfo.totalGb.toFixed(2)),
       disk_percent: Number(diskInfo.percent.toFixed(2)),
+      disk_read_ops: ioStats.read_ops,
+      disk_write_ops: ioStats.write_ops,
       local_ip: hostInfo.localIP,
       timestamp: new Date().toISOString(),
     }
@@ -470,6 +540,72 @@ export default class Serve extends Command {
     }
 
     return Number((100 - (idle / total) * 100).toFixed(2))
+  }
+
+  async getDiskIOStats(): Promise<{ read_ops: number, write_ops: number }> {
+    try {
+      const { execSync } = require('child_process')
+      const { platform } = require('os')
+
+      if (platform() === 'darwin') {
+        // macOS: usar iostat para obtener operaciones por segundo
+        // -c 2 = 2 samples, usamos el segundo para datos actuales
+        const output = execSync('iostat -d -c 2 -w 1 disk0', { timeout: 3000 }).toString()
+        const lines = output.trim().split('\n')
+
+        // La última línea contiene los datos actuales
+        if (lines.length >= 3) {
+          const parts = lines[lines.length - 1].split(/\s+/).filter((p: string) => p)
+          // Format: KB/t tps MB/s
+          // tps = transactions per second (total I/O operations)
+          const tps = parseFloat(parts[1]) || 0
+
+          // Aproximación: dividir entre lectura y escritura
+          return {
+            read_ops: Math.round(tps * 0.6),  // ~60% lecturas típicamente
+            write_ops: Math.round(tps * 0.4)  // ~40% escrituras
+          }
+        }
+      } else if (platform() === 'linux') {
+        // Linux: leer /proc/diskstats
+        // Formato: major minor name reads ... writes ...
+        const output = execSync('cat /proc/diskstats | grep -E " (sda|nvme0n1|vda) "', { timeout: 1000 }).toString()
+        const parts = output.trim().split(/\s+/)
+
+        if (parts.length >= 8) {
+          // Column 3: reads completed, Column 7: writes completed
+          // Estos son contadores acumulativos, necesitamos calcular delta
+          const reads = parseInt(parts[3], 10) || 0
+          const writes = parseInt(parts[7], 10) || 0
+
+          // Para obtener ops/s necesitaríamos guardar el valor anterior
+          // Por ahora retornamos los valores absolutos (se pueden usar para calcular delta en el backend)
+          return {
+            read_ops: reads,
+            write_ops: writes
+          }
+        }
+      } else if (platform() === 'win32') {
+        // Windows: usar typeperf para obtener operaciones por segundo
+        const output = execSync(
+          'typeperf "\\PhysicalDisk(_Total)\\Disk Reads/sec" "\\PhysicalDisk(_Total)\\Disk Writes/sec" -sc 1',
+          { timeout: 3000 }
+        ).toString()
+
+        const lines = output.split('\n')
+        if (lines.length >= 3) {
+          const values = lines[2].split(',')
+          return {
+            read_ops: Math.round(parseFloat(values[1]?.replace(/"/g, '')) || 0),
+            write_ops: Math.round(parseFloat(values[2]?.replace(/"/g, '')) || 0)
+          }
+        }
+      }
+    } catch (e) {
+      // Silently fail and return zeros - I/O stats are optional
+    }
+
+    return { read_ops: 0, write_ops: 0 }
   }
 
   async runServiceDiscovery(ws: WebSocket, serverId: string) {

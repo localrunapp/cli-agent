@@ -13,10 +13,30 @@ export interface Container {
   created: number
 }
 
-export async function getDockerContainers(): Promise<Container[]> {
+/**
+ * Check if Docker is available on the system
+ */
+export async function isDockerAvailable(): Promise<boolean> {
   try {
     const docker = new Docker()
-    const containers = await docker.listContainers({all: true})
+    await docker.ping()
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+export async function getDockerContainers(): Promise<Container[]> {
+  try {
+    // Check if Docker is available first
+    const dockerAvailable = await isDockerAvailable()
+    if (!dockerAvailable) {
+      // Docker not installed or not running - return empty array silently
+      return []
+    }
+
+    const docker = new Docker()
+    const containers = await docker.listContainers({ all: true })
 
     return containers.map(container => {
       const ports = (container.Ports || []).map(p => ({
@@ -26,16 +46,16 @@ export async function getDockerContainers(): Promise<Container[]> {
       }))
 
       return {
-        id: container.Id.substring(0, 12),
-        name: container.Names[0].replace(/^\//, ''),
-        image: container.Image,
-        status: container.State,
+        id: container.Id?.substring(0, 12) || 'unknown',
+        name: container.Names?.[0]?.replace(/^\//, '') || 'unknown',
+        image: container.Image || 'unknown',
+        status: container.State || 'unknown',
         ports,
-        created: container.Created,
+        created: container.Created || 0,
       }
     })
   } catch (error) {
-    console.error('Error getting Docker containers:', error)
+    // Silent fail - Docker not available or error occurred
     return []
   }
 }
