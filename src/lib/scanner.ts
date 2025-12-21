@@ -64,7 +64,7 @@ export class Scanner {
             results.push(...batchResults.filter(r => r.state === 'open'))
         }
 
-        return results.sort((a, b) => a.port - b.port)
+        return results.filter(r => r.port !== 47777).sort((a, b) => a.port - b.port)
     }
 
     static generateRange(start: number, end: number): number[] {

@@ -20,7 +20,6 @@
     "@oclif/core": "^3",
     "@oclif/plugin-help": "^6",
     "@oclif/plugin-plugins": "^4",
-    "@oclif/plugin-update": "^4.7.16",
     "@types/node-fetch": "^2.6.13",
     "chalk": "^4.1.2",
     "dockerode": "^4.0.0",
@@ -54,8 +53,7 @@
     "dirname": "localrun",
     "commands": "./dist/commands",
     "plugins": [
-      "@oclif/plugin-help",
-      "@oclif/plugin-update"
+      "@oclif/plugin-help"
     ],
     "topicSeparator": " ",
     "topics": {},
